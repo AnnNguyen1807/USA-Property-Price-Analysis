@@ -1,1 +1,126 @@
+---
+title: "Predictive Modeling"
+---
+
+## Libraries
+# Save and load environment
+save.image(file = "myPredictiveasm1.RData")
+load("myPredictiveasm1.RData")
+
+# Required libraries
+library(psych)
+library(corrplot)
+library(Amelia)
+library(caret)
+library(plotly)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(tidyr)
+library(purrr)
+library(tidyverse)
+library(ggcorrplot)
+library(rpart)
+library(rpart.plot)
+library(car)
+library(gridExtra)
+
+#Part B - Data Preprocessing
+housingvaluation <- read.csv("HousingValuation.csv")
+summary(housingvaluation)
+str(housingvaluation)
+
+#Transform Nominal Variables
+# Transform 'Utilities' and 'LotConfig'
+housingvaluation <- housingvaluation %>%
+  mutate(Utilities_AllPub = as.numeric(Utilities == "AllPub"),
+         Utilities_NoSeWa = as.numeric(Utilities == "NoSeWa"),
+         LotConfig_Corner = as.numeric(LotConfig == "Corner"),
+         LotConfig_CulDSac = as.numeric(LotConfig == "CulDSac"),
+         LotConfig_FR2 = as.numeric(LotConfig == "FR2"),
+         LotConfig_FR3 = as.numeric(LotConfig == "FR3"),
+         LotConfig_Inside = as.numeric(LotConfig == "Inside")) %>%
+  select(-Utilities, -LotConfig)
+
+#Handle Garage Type NAs
+# Create a function for handling NAs and transform 'GarageType'
+NA_numeric <- function(x, value) {
+  ifelse(is.na(x), 0, as.numeric(x == value))
+}
+
+housingvaluation <- housingvaluation %>%
+  mutate(Twotypes_garage = NA_numeric(GarageType, "2Types"),
+         Attachedtohome_garage = NA_numeric(GarageType, "Attchd"),
+         Basement_garage = NA_numeric(GarageType, "Basment"),
+         Buildin_garage = NA_numeric(GarageType, "BuiltIn"),
+         Carport_garage = NA_numeric(GarageType, "CarPort"),
+         Detachedfromhome_garage = NA_numeric(GarageType, "Detchd")) %>%
+  select(-GarageType)
+
+#Transform Ordinal Variables
+housingvaluation <- housingvaluation %>%
+  mutate(ExteriorCondition = as.numeric(factor(ExteriorCondition, levels = c("Gd", "TA", "Fa"), labels = c(2, 1, 0))),
+         CentralAir = as.numeric(factor(CentralAir, levels = c("N", "Y"), labels = c(0, 1))),
+         BasementCondition = as.numeric(factor(BasementCondition, levels = c("Gd", "TA", "Fa", "NB"), labels = c(3, 2, 1, 0))),
+         KitchenQuality = as.numeric(factor(KitchenQuality, levels = c("Ex", "Gd", "TA", "Fa"), labels = c(3, 2, 1, 0))),
+         LandContour = as.numeric(factor(LandContour, levels = c("Low", "HLS", "Bnk", "Lvl"), labels = c(3, 2, 1, 0))),
+         PavedDrive = as.numeric(factor(PavedDrive, levels = c("Y", "P", "N"), labels = c(2, 1, 0))),
+         Slope = as.numeric(factor(Slope, levels = c("Sev", "Mod", "Gtl"), labels = c(2, 1, 0))))
+
+#Part B - Summary Statistics
+#Calculate Summary Statistics
+# Continuous variables
+continuous_var <- c("LotArea", "TotalBSF", "LivingArea", "SalePrice", "OpenPorchSF", "LowQualFinSF", "PoolArea", "GarageCars")
+summary(housingvaluation[continuous_var])
+sd_results <- sapply(housingvaluation[continuous_var], sd, na.rm = TRUE)
+
+# Categorical variables frequency table
+categorical_var <- housingvaluation %>%
+  select(-one_of(continuous_var))
+frequency_tables <- lapply(categorical_var, table)
+
+#Part B - Outlier Detection
+# Outlier detection function
+find_outliers <- function(x) {
+  x <- x[!is.na(x)]
+  Q1 <- quantile(x, 0.25)
+  Q3 <- quantile(x, 0.75)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  return(x[x < lower_bound | x > upper_bound])
+}
+
+outliers <- lapply(housingvaluation[continuous_var], find_outliers)
+print(outliers)
+
+
+#Part B - Missing Value Treatment
+#Remove Missing Values
+missing_values <- colSums(is.na(housingvaluation))
+variables_with_missing <- names(missing_values[missing_values > 0])
+
+Remove_missing_value <- housingvaluation[complete.cases(housingvaluation), ]
+
+#Part B - Correlation and Dimensionality Reduction
+# Correlation matrix
+corplot <- cor(housingvaluation_complete, use = "pairwise.complete.obs")
+corrplot(corplot, method = "circle", type = "upper", order = "hclust")
+
+
+#Part C - Predictive Model
+# Split dataset into training and testing sets
+set.seed(6)
+sample_size <- floor(2/3 * nrow(housingvaluation_selected1))
+train.set <- housingvaluation_selected1[1:sample_size, ]
+test.set <- housingvaluation_selected1[(sample_size + 1):nrow(housingvaluation_selected1), ]
+
+# Fit linear model
+hmodel <- lm(SalePrice ~ ., data = train.set)
+test.set$predicted.SalePrice <- predict(hmodel, test.set)
+
+# Evaluate model performance
+error <- test.set$SalePrice - test.set$predicted.SalePrice
+rmse <- sqrt(mean(error^2))
+print(paste("Root Mean Square Error: ", rmse))
 
